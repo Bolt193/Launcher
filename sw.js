@@ -1,8 +1,8 @@
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open('v1').then(c => c.addAll([
-      '/Launcheragee/',
-      '/Launcheragee/index.html'
+      '/',
+      '/index.html'
     ]))
   );
 });
