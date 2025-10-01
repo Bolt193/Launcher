@@ -385,16 +385,19 @@
                 else stopListeningUI();
             };
 
-            recognition.onerror = (event) => {
-                console.error("Erreur reconnaissance:", event.error);
-                if (event.error === 'no-speech') {
-                    statusDiv.textContent = "Je n'ai rien entendu, je relance l'écoute...";
-                    autoRestart = true;
-                } else {
-                    statusDiv.textContent = "Une erreur est survenue durant l'écoute.";
-                    autoRestart = false;
-                }
-            };
+recognition.onerror = (event) => {
+    console.error("Erreur reconnaissance:", event.error);
+    if (event.error === 'no-speech') {
+        statusDiv.textContent = "Je n'ai rien entendu, je relance l'écoute...";
+        autoRestart = true;
+    } else {
+        // C'est cette partie que nous modifions
+        statusDiv.textContent = "Une erreur est survenue, rechargement..."; // 1. Affiche un message
+        setTimeout(() => {
+            location.reload(); // 2. Recharge la page après 2 secondes
+        }, 2000);
+    }
+};
         }
 
         async function loadWiki(article) {
