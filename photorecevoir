@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dernière Image Envoyée</title>
+    <style>
+        /* --- CSS --- */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; 
+        }
+
+        body {
+            background-color: #000000; 
+            background-size: contain;
+            background-position: center center;
+            background-repeat: no-repeat;
+            /* On ajoute une petite transition pour que le changement d'image soit plus doux */
+            transition: background-image 0.5s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    <script>
+    // --- JavaScript ---
+    document.addEventListener('DOMContentLoaded', function() {
+        
+        // --- CONFIGURATION ---
+        const CLOUD_NAME = "dczoowomb";
+        const TAG_TO_FETCH = "mon-site-gallerie";
+
+        /**
+         * Récupère la liste des images, trouve la plus récente 
+         * et l'affiche en fond d'écran.
+         */
+        const loadLatestImage = async () => {
+            console.log("Mise à jour de l'image..."); // Pour voir l'activité dans la console
+            const listUrl = `https://res.cloudinary.com/${CLOUD_NAME}/image/list/${TAG_TO_FETCH}.json`;
+            
+            try {
+                const response = await fetch(listUrl);
+                if (!response.ok) {
+                    throw new Error('Impossible de récupérer la liste des images.');
+                }
+
+                const data = await response.json();
+                
+                if (data.resources && data.resources.length > 0) {
+                    data.resources.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+                    
+                    const latestImage = data.resources[0];
+                    
+                    const imageUrl = `https://res.cloudinary.com/${CLOUD_NAME}/image/upload/${latestImage.public_id}.${latestImage.format}`;
+                    
+                    // On vérifie si l'image affichée est différente avant de la changer
+                    // pour éviter un clignotement inutile.
+                    if (document.body.style.backgroundImage !== `url("${imageUrl}")`) {
+                        document.body.style.backgroundImage = `url(${imageUrl})`;
+                    }
+
+                } else {
+                    console.log("Aucune image trouvée avec le tag spécifié.");
+                }
+
+            } catch (error) {
+                console.error('Erreur lors du chargement de l\'image:', error);
+            }
+        };
+        
+        // 1. Lancer la fonction une première fois au chargement de la page
+        loadLatestImage();
+
+        // 2. MODIFICATION : Lancer la fonction toutes les 10 minutes
+        // 10 minutes * 60 secondes/minute * 1000 millisecondes/seconde = 600000 ms
+        setInterval(loadLatestImage, 600000);
+
+    });
+    </script>
+</body>
+</html>
