@@ -461,6 +461,21 @@ recognition.onerror = (event) => {
           }
         });
     </script>
+    <script>
+  // Au chargement, descend de 200px
+  window.addEventListener("load", () => {
+    window.scrollTo({ top: 200, behavior: "smooth" });
+  });
+
+  // Quand on remonte, force à redescendre à 200px
+  let lastY = 0;
+  window.addEventListener("scroll", () => {
+    if (window.scrollY < lastY && window.scrollY < 200) {
+      window.scrollTo({ top: 200, behavior: "smooth" });
+    }
+    lastY = window.scrollY;
+  });
+    </script>
 <nav class="bottom-navigation-bar">
 
     <button class="nav-item" aria-label="Précédent">
