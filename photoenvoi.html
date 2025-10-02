@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloudinary Image Uploader</title>
+    <style>
+        /* --- CSS --- */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f0f2f5;
+            color: #1c1e21;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            padding: 24px;
+        }
+
+        h1, h2 {
+            color: #0056b3;
+            border-bottom: 2px solid #f0f2f5;
+            padding-bottom: 10px;
+        }
+
+        /* Uploader Section */
+        .uploader {
+            margin-bottom: 30px;
+            text-align: center;
+            border: 2px dashed #ccd0d5;
+            padding: 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .uploader:hover {
+            background-color: #f8f9fa;
+        }
+
+        #file-input {
+            display: none;
+        }
+        
+        .uploader-text {
+            font-size: 1.1em;
+            color: #606770;
+        }
+
+        #upload-status {
+            margin-top: 15px;
+            font-weight: bold;
+        }
+
+        /* Gallery Section */
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .gallery-grid img {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .gallery-grid img:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        #gallery-loader {
+            text-align: center;
+            padding: 20px;
+            font-size: 1.2em;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>🖼️ Uploader d'images Cloudinary</h1>
+        
+        <section>
+            <h2>1. Envoyer une nouvelle image</h2>
+            <label for="file-input" class="uploader">
+                <p class="uploader-text">Cliquez ici pour choisir une image</p>
+            </label>
+            <input type="file" id="file-input" accept="image/*">
+            <div id="upload-status"></div>
+        </section>
+
+        <section>
+            <h2>2. Galerie des images</h2>
+            <div id="gallery-loader">Chargement des images...</div>
+            <div id="gallery-grid" class="gallery-grid"></div>
+        </section>
+    </div>
+
+    <script>
+    // --- JavaScript ---
+    document.addEventListener('DOMContentLoaded', function() {
+        
+        // --- CONFIGURATION ---
+        const CLOUD_NAME = "dczoowomb"; // <-- Mis à jour avec le bon Cloud Name
+        const UPLOAD_PRESET = "preset_debase";
+        const TAG_TO_FETCH = "mon-site-gallerie";
+
+        // --- Références aux éléments HTML ---
+        const fileInput = document.getElementById('file-input');
+        const uploadStatus = document.getElementById('upload-status');
+        const galleryGrid = document.getElementById('gallery-grid');
+        const galleryLoader = document.getElementById('gallery-loader');
+
+        /**
+         * Gère le téléversement de l'image vers Cloudinary
+         */
+        const handleUpload = async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            uploadStatus.textContent = 'Envoi en cours...';
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('upload_preset', UPLOAD_PRESET);
+            formData.append('tags', TAG_TO_FETCH);
+
+            const uploadUrl = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
+
+            try {
+                const response = await fetch(uploadUrl, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error('Échec de l\'envoi.');
+                }
+
+                const data = await response.json();
+                console.log('Image envoyée avec succès:', data);
+                uploadStatus.textContent = 'Image envoyée ! ✅';
+                
+                loadImages(); 
+
+            } catch (error) {
+                console.error('Erreur lors de l\'envoi:', error);
+                uploadStatus.textContent = 'Erreur lors de l\'envoi. ❌';
+            }
+        };
+
+        /**
+         * Récupère et affiche toutes les images ayant un tag spécifique
+         */
+        const loadImages = async () => {
+            galleryLoader.style.display = 'block';
+            galleryGrid.innerHTML = '';
+
+            const listUrl = `https://res.cloudinary.com/${CLOUD_NAME}/image/list/${TAG_TO_FETCH}.json`;
+            
+            try {
+                const response = await fetch(listUrl);
+                if (!response.ok) {
+                    if (response.status === 404) {
+                       galleryLoader.textContent = "Aucune image trouvée. Envoyez-en une pour commencer !";
+                       return;
+                    }
+                    throw new Error('Impossible de récupérer la liste des images.');
+                }
+
+                const data = await response.json();
+                
+                if (data.resources && data.resources.length > 0) {
+                    galleryLoader.style.display = 'none';
+                    
+                    data.resources.forEach(image => {
+                        const imageUrl = `https://res.cloudinary.com/${CLOUD_NAME}/image/upload/c_fill,h_150,w_150/${image.public_id}.${image.format}`;
+                        
+                        const imgElement = document.createElement('img');
+                        imgElement.src = imageUrl;
+                        imgElement.alt = `Image ${image.public_id}`;
+                        galleryGrid.appendChild(imgElement);
+                    });
+                } else {
+                    galleryLoader.textContent = "Aucune image trouvée. Envoyez-en une pour commencer !";
+                }
+
+            } catch (error) {
+                console.error('Erreur lors du chargement des images:', error);
+                galleryLoader.textContent = 'Impossible de charger la galerie. ❌';
+            }
+        };
+
+        // --- Écouteurs d'événements ---
+        fileInput.addEventListener('change', handleUpload);
+        
+        loadImages();
+
+    });
+    </script>
+</body>
+</html>
