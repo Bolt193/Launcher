@@ -1,84 +1,317 @@
 <!DOCTYPE html>
 <html lang="fr">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dernière Image Envoyée</title>
+    <title>Galerie d'Images</title>
     <style>
         /* --- CSS --- */
-        html, body {
+        html,
+        body {
             margin: 0;
             padding: 0;
             width: 100%;
             height: 100%;
-            overflow: hidden; 
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         body {
-            background-color: #000000; 
-            background-size: contain;
-            background-position: center center;
-            background-repeat: no-repeat;
-            /* On ajoute une petite transition pour que le changement d'image soit plus doux */
-            transition: background-image 0.5s ease-in-out;
+            background-color: #000000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        /* Image principale */
+        #main-image {
+            max-width: 98%;
+            max-height: 98vh;
+            object-fit: contain;
+            image-orientation: from-image;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+        }
+
+        #main-image.loaded {
+            opacity: 1;
+        }
+
+        /* Boutons de navigation */
+        .nav-button {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            font-size: 3em;
+            padding: 20px 30px;
+            cursor: pointer;
+            border-radius: 10px;
+            transition: background-color 0.2s;
+            z-index: 10;
+        }
+
+        .nav-button:hover {
+            background-color: rgba(255, 255, 255, 0.4);
+        }
+
+        .nav-button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        #prev-button {
+            left: 20px;
+        }
+
+        #next-button {
+            right: 20px;
+        }
+
+        .nav-button.hidden {
+            display: none;
+        }
+
+        /* Indicateur de position */
+        #position-indicator {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(255, 255, 255, 0.2);
+            padding: 10px 20px;
+            border-radius: 20px;
+            color: white;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+
+        /* Message de chargement */
+        #loading-message {
+            color: white;
+            font-size: 1.5em;
+            text-align: center;
+        }
+
+        /* Message si aucune image */
+        #no-image-message {
+            color: white;
+            font-size: 1.5em;
+            text-align: center;
+            display: none;
         }
     </style>
 </head>
-<body>
-    <script>
-    // --- JavaScript ---
-    document.addEventListener('DOMContentLoaded', function() {
-        
-        // --- CONFIGURATION ---
-        const CLOUD_NAME = "dczoowomb";
-        const TAG_TO_FETCH = "mon-site-gallerie";
 
-        /**
-         * Récupère la liste des images, trouve la plus récente 
-         * et l'affiche en fond d'écran.
-         */
-        const loadLatestImage = async () => {
-            console.log("Mise à jour de l'image..."); // Pour voir l'activité dans la console
-            const listUrl = `https://res.cloudinary.com/${CLOUD_NAME}/image/list/${TAG_TO_FETCH}.json`;
-            
-            try {
-                const response = await fetch(listUrl);
-                if (!response.ok) {
-                    throw new Error('Impossible de récupérer la liste des images.');
+<body>
+    <div id="loading-message">Chargement des images...</div>
+    <div id="no-image-message">Aucune image disponible</div>
+
+    <img id="main-image" src="" alt="Image">
+
+    <button id="prev-button" class="nav-button hidden">‹</button>
+    <button id="next-button" class="nav-button hidden">›</button>
+
+    <div id="position-indicator" style="display: none;"></div>
+
+    <script>
+        // --- JavaScript ---
+        document.addEventListener('DOMContentLoaded', function () {
+
+            // --- CONFIGURATION ---
+            const CLOUD_NAME = "dczoowomb";
+            const TAG_TO_FETCH = "mon-site-gallerie";
+            const EXPIRATION_TIME = 24 * 60 * 60 * 1000; // 24 heures en millisecondes
+
+            // --- Références aux éléments HTML ---
+            const mainImage = document.getElementById('main-image');
+            const loadingMessage = document.getElementById('loading-message');
+            const noImageMessage = document.getElementById('no-image-message');
+            const prevButton = document.getElementById('prev-button');
+            const nextButton = document.getElementById('next-button');
+            const positionIndicator = document.getElementById('position-indicator');
+
+            // --- Variables globales ---
+            let currentBatchImages = [];
+            let currentIndex = 0;
+
+            /**
+             * Charge l'image actuelle
+             */
+            const displayCurrentImage = () => {
+                if (currentBatchImages.length === 0) return;
+
+                mainImage.classList.remove('loaded');
+
+                setTimeout(() => {
+                    mainImage.src = currentBatchImages[currentIndex].url;
+                    mainImage.onload = () => {
+                        mainImage.classList.add('loaded');
+                    };
+                }, 100);
+
+                // Mettre à jour l'indicateur de position
+                if (currentBatchImages.length > 1) {
+                    positionIndicator.textContent = `${currentIndex + 1} / ${currentBatchImages.length}`;
+                    positionIndicator.style.display = 'block';
+                } else {
+                    positionIndicator.style.display = 'none';
                 }
 
-                const data = await response.json();
-                
-                if (data.resources && data.resources.length > 0) {
-                    data.resources.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-                    
-                    const latestImage = data.resources[0];
-                    
-                    const imageUrl = `https://res.cloudinary.com/${CLOUD_NAME}/image/upload/${latestImage.public_id}.${latestImage.format}`;
-                    
-                    // On vérifie si l'image affichée est différente avant de la changer
-                    // pour éviter un clignotement inutile.
-                    if (document.body.style.backgroundImage !== `url("${imageUrl}")`) {
-                        document.body.style.backgroundImage = `url(${imageUrl})`;
+                // Gérer l'état des boutons
+                updateNavigationButtons();
+            };
+
+            /**
+             * Met à jour l'état des boutons de navigation
+             */
+            const updateNavigationButtons = () => {
+                if (currentBatchImages.length <= 1) {
+                    prevButton.classList.add('hidden');
+                    nextButton.classList.add('hidden');
+                    return;
+                }
+
+                prevButton.classList.remove('hidden');
+                nextButton.classList.remove('hidden');
+
+                prevButton.disabled = (currentIndex === 0);
+                nextButton.disabled = (currentIndex === currentBatchImages.length - 1);
+            };
+
+            /**
+             * Navigue vers l'image précédente
+             */
+            const showPreviousImage = () => {
+                if (currentIndex > 0) {
+                    currentIndex--;
+                    displayCurrentImage();
+                }
+            };
+
+            /**
+             * Navigue vers l'image suivante
+             */
+            const showNextImage = () => {
+                if (currentIndex < currentBatchImages.length - 1) {
+                    currentIndex++;
+                    displayCurrentImage();
+                }
+            };
+
+            /**
+             * Récupère le dernier batch d'images et l'affiche
+             */
+            const loadLatestBatch = async () => {
+                console.log("Chargement du dernier batch d'images...");
+                const listUrl = `https://res.cloudinary.com/${CLOUD_NAME}/image/list/${TAG_TO_FETCH}.json`;
+
+                try {
+                    const response = await fetch(listUrl);
+                    if (!response.ok) {
+                        throw new Error('Impossible de récupérer la liste des images.');
                     }
 
-                } else {
-                    console.log("Aucune image trouvée avec le tag spécifié.");
+                    const data = await response.json();
+
+                    if (data.resources && data.resources.length > 0) {
+                        // Trier les images par date de création (plus récente en premier)
+                        const sortedImages = data.resources.sort((a, b) =>
+                            new Date(b.created_at) - new Date(a.created_at)
+                        );
+
+                        // Filtrer les images de plus de 24h
+                        const now = Date.now();
+                        const validImages = sortedImages.filter(img => {
+                            const createdAt = new Date(img.created_at).getTime();
+                            return (now - createdAt) < EXPIRATION_TIME;
+                        });
+
+                        if (validImages.length === 0) {
+                            showNoImageMessage();
+                            return;
+                        }
+
+                        // Extraire les batch_id de tous les tags
+                        const imagesWithBatch = validImages.map(img => {
+                            const batchTag = img.tags?.find(tag => tag.startsWith('batch_'));
+                            return {
+                                ...img,
+                                batchId: batchTag || null
+                            };
+                        });
+
+                        // Trouver le dernier batch_id
+                        const latestBatchId = imagesWithBatch[0].batchId;
+
+                        // Récupérer toutes les images du dernier batch
+                        if (latestBatchId) {
+                            currentBatchImages = imagesWithBatch
+                                .filter(img => img.batchId === latestBatchId)
+                                .map(img => ({
+                                    url: `https://res.cloudinary.com/${CLOUD_NAME}/image/upload/${img.public_id}.${img.format}`,
+                                    created_at: img.created_at
+                                }));
+                        } else {
+                            // Si pas de batch_id, prendre juste la dernière image
+                            currentBatchImages = [{
+                                url: `https://res.cloudinary.com/${CLOUD_NAME}/image/upload/${validImages[0].public_id}.${validImages[0].format}`,
+                                created_at: validImages[0].created_at
+                            }];
+                        }
+
+                        // Afficher la première image
+                        currentIndex = 0;
+                        loadingMessage.style.display = 'none';
+                        displayCurrentImage();
+
+                    } else {
+                        showNoImageMessage();
+                    }
+
+                } catch (error) {
+                    console.error('Erreur lors du chargement de l\'image:', error);
+                    showNoImageMessage();
                 }
+            };
 
-            } catch (error) {
-                console.error('Erreur lors du chargement de l\'image:', error);
-            }
-        };
-        
-        // 1. Lancer la fonction une première fois au chargement de la page
-        loadLatestImage();
+            /**
+             * Affiche le message "aucune image"
+             */
+            const showNoImageMessage = () => {
+                loadingMessage.style.display = 'none';
+                noImageMessage.style.display = 'block';
+                mainImage.style.display = 'none';
+                prevButton.classList.add('hidden');
+                nextButton.classList.add('hidden');
+            };
 
-        // 2. MODIFICATION : Lancer la fonction toutes les 10 minutes
-        // 10 minutes * 60 secondes/minute * 1000 millisecondes/seconde = 600000 ms
-        setInterval(loadLatestImage, 600000);
+            // --- Écouteurs d'événements ---
+            prevButton.addEventListener('click', showPreviousImage);
+            nextButton.addEventListener('click', showNextImage);
 
-    });
+            // Navigation au clavier
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowLeft') {
+                    showPreviousImage();
+                } else if (e.key === 'ArrowRight') {
+                    showNextImage();
+                }
+            });
+
+            // 1. Lancer la fonction une première fois au chargement de la page
+            loadLatestBatch();
+
+            // 2. Lancer la fonction toutes les 10 minutes
+            // 10 minutes * 60 secondes/minute * 1000 millisecondes/seconde = 600000 ms
+            setInterval(loadLatestBatch, 600000);
+
+        });
     </script>
 </body>
+
 </html>
