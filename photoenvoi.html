@@ -71,18 +71,50 @@
             margin-top: 20px;
         }
 
-        .gallery-grid img {
+        .gallery-item {
+            position: relative;
             width: 100%;
             height: 150px;
+        }
+
+        .gallery-item img,
+        .gallery-item video {
+            width: 100%;
+            height: 100%;
             object-fit: cover;
             border-radius: 8px;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
             transition: transform 0.2s, box-shadow 0.2s;
         }
 
-        .gallery-grid img:hover {
+        .gallery-item:hover img,
+        .gallery-item:hover video {
             transform: scale(1.05);
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .delete-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background-color: rgba(255, 0, 0, 0.8);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 25px;
+            height: 25px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 10;
+        }
+
+        .gallery-item:hover .delete-btn {
+            opacity: 1;
         }
 
         #gallery-loader {
@@ -142,25 +174,26 @@
         <h1>🖼️ Uploader d'images Cloudinary</h1>
 
         <section>
-            <h2>1. Envoyer une ou plusieurs images</h2>
-            <label for="file-input" class="uploader">
-                <p class="uploader-text">Cliquez ici pour choisir une ou plusieurs images</p>
-            </label>
-            <input type="file" id="file-input" accept="image/*" multiple>
-            <div id="upload-status"></div>
-        </section>
-
-        <section>
-            <h2>2. Galerie des images</h2>
-            <div id="gallery-loader">Chargement des images...</div>
-            <div id="gallery-grid" class="gallery-grid"></div>
-        </section>
-        <section>
-            <h2>3. 🔔 Faire sonner</h2>
+            <h2>1. 🔔 Faire sonner</h2>
             <div class="ring-section">
                 <button id="ring-button">🔔 Faire sonner</button>
                 <div id="ring-status"></div>
             </div>
+        </section>
+
+        <section>
+            <h2>2. Envoyer une ou plusieurs images</h2>
+            <label for="file-input" class="uploader">
+                <p class="uploader-text">Cliquez ici pour choisir images ou vidéos (max 100 Mo)</p>
+            </label>
+            <input type="file" id="file-input" accept="image/*,video/*" multiple>
+            <div id="upload-status"></div>
+        </section>
+
+        <section>
+            <h2>3. Galerie des images</h2>
+            <div id="gallery-loader">Chargement des images...</div>
+            <div id="gallery-grid" class="gallery-grid"></div>
         </section>
     </div>
 
@@ -169,9 +202,11 @@
         document.addEventListener('DOMContentLoaded', function () {
 
             // --- CONFIGURATION ---
-            const CLOUD_NAME = "dczoowomb";
+            const CLOUD_NAME = "dl7zjztb1";
             const UPLOAD_PRESET = "preset_debase";
             const TAG_TO_FETCH = "mon-site-gallerie";
+            const API_KEY = "584772614141814";
+            const API_SECRET = "Yve_cEpSUuJNRWeyq2uF6peBX0o";
 
             // --- Références aux éléments HTML ---
             const fileInput = document.getElementById('file-input');
@@ -191,7 +226,7 @@
 
                 uploadStatus.textContent = `Envoi de ${files.length} image(s) en cours...`;
 
-                const uploadUrl = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
+                const uploadUrl = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`;
                 let successCount = 0;
                 let errorCount = 0;
 
@@ -240,42 +275,140 @@
             /**
              * Récupère et affiche toutes les images ayant un tag spécifique
              */
+            /**
+             * Récupère et affiche toutes les images ET vidéos
+             */
             const loadImages = async () => {
                 galleryLoader.style.display = 'block';
                 galleryGrid.innerHTML = '';
 
-                const listUrl = `https://res.cloudinary.com/${CLOUD_NAME}/image/list/${TAG_TO_FETCH}.json`;
+                // URLs pour récupérer les listes (images et vidéos séparément) avec cache-busting
+                const timestamp = Date.now();
+                const imageListUrl = `https://res.cloudinary.com/${CLOUD_NAME}/image/list/${TAG_TO_FETCH}.json?_t=${timestamp}`;
+                const videoListUrl = `https://res.cloudinary.com/${CLOUD_NAME}/video/list/${TAG_TO_FETCH}.json?_t=${timestamp}`;
 
                 try {
-                    const response = await fetch(listUrl);
-                    if (!response.ok) {
-                        if (response.status === 404) {
-                            galleryLoader.textContent = "Aucune image trouvée. Envoyez-en une pour commencer !";
-                            return;
-                        }
-                        throw new Error('Impossible de récupérer la liste des images.');
+                    // On tente de récupérer les 2 listes en parallèle
+                    // On utilise .catch pour qu'une erreur sur l'une n'empêche pas l'autre (ex: pas de vidéos encore uploadées)
+                    const [imgResponse, vidResponse] = await Promise.all([
+                        fetch(imageListUrl).catch(() => ({ ok: false })),
+                        fetch(videoListUrl).catch(() => ({ ok: false }))
+                    ]);
+
+                    let resources = [];
+
+                    // Traitement liste images
+                    if (imgResponse.ok) {
+                        try {
+                            const imgData = await imgResponse.json();
+                            if (imgData.resources) {
+                                resources = resources.concat(imgData.resources.map(r => ({ ...r, resource_type: 'image' })));
+                            }
+                        } catch (e) { console.warn("Erreur parsing images JSON", e); }
                     }
 
-                    const data = await response.json();
+                    // Traitement liste vidéos
+                    if (vidResponse.ok) {
+                        try {
+                            const vidData = await vidResponse.json();
+                            if (vidData.resources) {
+                                resources = resources.concat(vidData.resources.map(r => ({ ...r, resource_type: 'video' })));
+                            }
+                        } catch (e) { console.warn("Erreur parsing vidéos JSON", e); }
+                    }
 
-                    if (data.resources && data.resources.length > 0) {
+                    // Tri du plus récent au plus ancien
+                    resources.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+                    if (resources.length > 0) {
                         galleryLoader.style.display = 'none';
 
-                        data.resources.forEach(image => {
-                            const imageUrl = `https://res.cloudinary.com/${CLOUD_NAME}/image/upload/c_fill,h_150,w_150/${image.public_id}.${image.format}`;
+                        resources.forEach(resource => {
+                            const container = document.createElement('div');
+                            container.className = 'gallery-item';
+                            container.style.cursor = 'pointer';
+                            container.title = 'Cliquez pour supprimer';
 
-                            const imgElement = document.createElement('img');
-                            imgElement.src = imageUrl;
-                            imgElement.alt = `Image ${image.public_id}`;
-                            galleryGrid.appendChild(imgElement);
+                            let mediaElement;
+                            const isVideo = resource.resource_type === 'video';
+                            const url = `https://res.cloudinary.com/${CLOUD_NAME}/${resource.resource_type}/upload/c_fill,h_150,w_150/${resource.public_id}.${resource.format}`;
+
+                            if (isVideo) {
+                                mediaElement = document.createElement('video');
+                                mediaElement.src = url;
+                                mediaElement.muted = true;
+                                mediaElement.onmouseover = () => mediaElement.play();
+                                mediaElement.onmouseout = () => mediaElement.pause();
+                            } else {
+                                mediaElement = document.createElement('img');
+                                mediaElement.src = url;
+                                mediaElement.alt = `Image ${resource.public_id}`;
+                            }
+
+                            // Au clic sur l'élément entier, on propose la suppression
+                            container.onclick = () => toggleDelete(resource.public_id, resource.resource_type, container);
+
+                            container.appendChild(mediaElement);
+                            galleryGrid.appendChild(container);
                         });
                     } else {
-                        galleryLoader.textContent = "Aucune image trouvée. Envoyez-en une pour commencer !";
+                        galleryLoader.textContent = "Aucun média trouvé. Envoyez-en un pour commencer !";
                     }
 
                 } catch (error) {
-                    console.error('Erreur lors du chargement des images:', error);
+                    console.error('Erreur globale lors du chargement:', error);
                     galleryLoader.textContent = 'Impossible de charger la galerie. ❌';
+                }
+            };
+
+            // --- Deletion Logic ---
+            async function sha1(str) {
+                const buffer = new TextEncoder().encode(str);
+                const hash = await crypto.subtle.digest('SHA-1', buffer);
+                return Array.from(new Uint8Array(hash))
+                    .map(x => x.toString(16).padStart(2, '0'))
+                    .join('');
+            }
+
+            const deleteImage = async (publicId, resourceType) => {
+                const timestamp = Math.round(Date.now() / 1000);
+                const strToSign = `public_id=${publicId}&timestamp=${timestamp}${API_SECRET}`;
+                const signature = await sha1(strToSign);
+
+                const formData = new FormData();
+                formData.append("public_id", publicId);
+                formData.append("api_key", API_KEY);
+                formData.append("timestamp", timestamp);
+                formData.append("signature", signature);
+                formData.append("invalidate", "true");
+
+                const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/destroy`;
+
+                try {
+                    const res = await fetch(url, { method: "POST", body: formData });
+                    const data = await res.json();
+                    if (data.result === 'ok' || data.result === 'not found') return true;
+                    console.error("Delete Error details:", data);
+                    throw new Error(data.message || data.error?.message || JSON.stringify(data));
+                } catch (e) {
+                    console.error("Delete failed", e);
+                    alert("Erreur de suppression: " + e.message);
+                    return false;
+                }
+            };
+
+            const toggleDelete = async (publicId, resourceType, itemElement) => {
+                if (!confirm("Voulez-vous vraiment supprimer cet élément DÉFINITIVEMENT ?")) return;
+
+                itemElement.style.opacity = "0.5"; // Visual feedback
+
+                const success = await deleteImage(publicId, resourceType);
+
+                if (success) {
+                    itemElement.remove();
+                    console.log(`Suppression réussie pour : ${publicId}`);
+                } else {
+                    itemElement.style.opacity = "1"; // Revert
                 }
             };
 
