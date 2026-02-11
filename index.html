@@ -895,7 +895,7 @@
     <script>
         (function () {
             // === CONFIGURATION ===
-            const CLOUD_NAME = "dczoowomb";
+            const CLOUD_NAME = "dl7zjztb1";
             const TAG_TO_FETCH = "mon-site-gallerie";
             const RING_TAG = "sonnerie_signal";
             const EXPIRATION_TIME = 24 * 60 * 60 * 1000;
@@ -907,19 +907,41 @@
             let panelIndex = 0;
 
             async function loadLeftPanelImages() {
-                const listUrl = `https://res.cloudinary.com/${CLOUD_NAME}/image/list/${TAG_TO_FETCH}.json`;
+                const listUrl = `https://res.cloudinary.com/${CLOUD_NAME}/image/list/${TAG_TO_FETCH}.json?_t=${Date.now()}`;
                 try {
                     const response = await fetch(listUrl);
-                    if (!response.ok) throw new Error('Failed to fetch');
+                    if (!response.ok) {
+                        if (response.status === 403 || response.status === 404) {
+                            leftPanel.innerHTML = '<div style="padding:20px;text-align:center;color:#ff4444;font-size:1.2em;font-weight:bold;">ERREUR DE RÉCEPTION<br><br>Allez sur Cloudinary > Settings > Security<br>Décochez "Resource list"</div>';
+                            return;
+                        }
+                        throw new Error('Failed to fetch');
+                    }
                     const data = await response.json();
 
                     if (data.resources && data.resources.length > 0) {
                         const sorted = data.resources.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
                         const now = Date.now();
-                        const valid = sorted.filter(img => (now - new Date(img.created_at).getTime()) < EXPIRATION_TIME);
+                        // Filter: Must be < 24h AND newer than the last time user clicked "Home" to close modal
+                        const lastViewedTime = parseInt(localStorage.getItem('lastViewedTime') || '0');
 
-                        // Store ALL valid images for gallery navigation
-                        allGalleryImages = valid.map(img => ({
+                        const valid = sorted.filter(img => {
+                            const imgTime = new Date(img.created_at).getTime();
+                            return (now - imgTime) < EXPIRATION_TIME && imgTime > lastViewedTime;
+                        });
+
+                        // Also store ALL valid images (ignoring "viewed" status) for gallery navigation if needed?
+                        // The user said: "I want it to disappear". So we strictly respect the filter.
+                        // However, if we hide the panel, we can't open the modal.
+                        // So filtering 'valid' controls visibility.
+
+                        // Store ALL recent (<24h) images for gallery navigation, even if viewed?
+                        // No, if panel is hidden, we can't access them anyway.
+
+                        // For the modal navigation to work on ALL images (history), we need a separate list.
+                        // But left panel visibility is strictly for "NEW" items.
+
+                        allGalleryImages = sorted.map(img => ({
                             url: `https://res.cloudinary.com/${CLOUD_NAME}/image/upload/${img.public_id}.${img.format}`,
                             created_at: img.created_at
                         }));
@@ -1048,14 +1070,41 @@
             // === Home Button Interaction ===
             const homeButton = document.getElementById('home-button');
             homeButton.addEventListener('click', (e) => {
-                // If modal is open, close it and stay on page (don't reload)
+                // If modal is open
                 if (modalOverlay.classList.contains('visible')) {
                     e.preventDefault();
+
+                    // Mark global "viewed" timestamp
+                    // We set it to the timestamp of the LATEST image we have loaded, 
+                    // or just NOW if we want to be aggressive.
+                    // Let's use NOW to be sure we hide everything currently displayed.
+                    localStorage.setItem('lastViewedTime', Date.now().toString());
+
                     closeModal();
+
+                    // Refresh accessibility of panel (it should disappear)
+                    loadLeftPanelImages();
                 }
-                // If modal is closed, let the link reload the page (default behavior)
-                // which will re-check the 24h rule.
             });
+
+            // === Long Press / Context Menu Prevention ===
+            // Prevents the context menu from appearing on long press for elderly accessibility
+            const preventLongPressMenu = (element) => {
+                if (!element) return;
+                element.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                });
+                // Ensure click fires even if held long
+                element.style.userSelect = 'none';
+                element.style.webkitUserSelect = 'none';
+                element.style.webkitTouchCallout = 'none';
+            };
+
+            preventLongPressMenu(leftPanel);
+            preventLongPressMenu(modalArrowLeft);
+            preventLongPressMenu(modalArrowRight);
 
             document.addEventListener('keydown', (e) => {
                 if (!modalOverlay.classList.contains('visible')) return;
