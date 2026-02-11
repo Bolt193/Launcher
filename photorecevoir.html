@@ -123,7 +123,7 @@
         document.addEventListener('DOMContentLoaded', function () {
 
             // --- CONFIGURATION ---
-            const CLOUD_NAME = "dczoowomb";
+            const CLOUD_NAME = "dl7zjztb1";
             const TAG_TO_FETCH = "mon-site-gallerie";
             const EXPIRATION_TIME = 24 * 60 * 60 * 1000; // 24 heures en millisecondes
 
@@ -208,12 +208,15 @@
              */
             const loadLatestBatch = async () => {
                 console.log("Chargement du dernier batch d'images...");
-                const listUrl = `https://res.cloudinary.com/${CLOUD_NAME}/image/list/${TAG_TO_FETCH}.json`;
+                const listUrl = `https://res.cloudinary.com/${CLOUD_NAME}/image/list/${TAG_TO_FETCH}.json?_t=${Date.now()}`;
 
                 try {
                     const response = await fetch(listUrl);
                     if (!response.ok) {
-                        throw new Error('Impossible de récupérer la liste des images.');
+                        if (response.status === 403 || response.status === 404) {
+                            alert("⚠️ ERREUR DE RÉCEPTION :\n\nCloudinary empêche la lecture de la liste des images.\n\nSOLUTION :\n1. Allez sur le site Cloudinary > Settings > Security.\n2. Décochez 'Resource list' dans 'Restricted media types'.\n3. Sauvegardez.");
+                        }
+                        throw new Error('Impossible de récupérer la liste des images (' + response.status + ').');
                     }
 
                     const data = await response.json();
